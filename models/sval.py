@@ -101,8 +101,12 @@ class SVAL(object):
             self.logger.info("Using weights as pertrained model")
             
     def initalize_memory(self, dataloader):
-        self.slpd_bank.initialize_memory(self.feature_model, dataloader)
-        self.td_bank.initialize_memory(self.feature_model, dataloader)
+        self.slpd_bank.initialize_memory(
+            self.feature_model, dataloader, self.device
+        )
+        self.td_bank.initialize_memory(
+            self.feature_model, dataloader, self.device
+        )
         
     def memory_index_reset(self):
         self.slpd_bank.reset_after_epoch()

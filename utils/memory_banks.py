@@ -50,18 +50,18 @@ class SLPDMemoryBank(BaseMemory):
     def __init__(self, memory_size, update_weight, logger):
         super(SLPDMemoryBank, self).__init__(memory_size, update_weight, logger)
         
-    def initialize_memory(self, model, dataloader):
+    def initialize_memory(self, model, dataloader, device):
         self.logger.info("Initializing SLPD Memory Bank")
 
         with torch.no_grad():
             model.eval()
             tepoch = tqdm(iter(dataloader), unit='batch')
             for batch in tepoch:
-                image_patch = batch['patch_image']
+                image_patch = batch['patch_image'].to(device)
                 # indices = torch.LongTensor(
                 #     batch['indices'], device=image_patch.device
                 # )
-                indices = batch['indices']
+                indices = batch['indices'].to(device)
                 self.check_for_double_update(indices.cpu().tolist())
                 self.index_update.extend(indices.cpu().tolist())
                 
@@ -77,18 +77,18 @@ class TDMemoryBank(BaseMemory):
     def __init__(self, memory_size, update_weight, logger):
         super(TDMemoryBank, self).__init__(memory_size, update_weight, logger)
         
-    def initialize_memory(self, model, dataloader):
+    def initialize_memory(self, model, dataloader, device):
         self.logger.info("Initializing TD Memory Bank")
 
         with torch.no_grad():
             model.eval()
             tepoch = tqdm(dataloader, unit='batch')
             for batch in tepoch:
-                image_patch = batch['patch_image']
+                image_patch = batch['image'].to(device)
                 # indices = torch.LongTensor(
                 #     batch['indices'], device=image_patch.device
                 # )
-                indices = batch['indices']
+                indices = batch['indices'].to(device)
                 self.check_for_double_update(indices.cpu().tolist())
                 self.index_update.extend(indices.cpu().tolist())
                 
