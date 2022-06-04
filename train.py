@@ -81,12 +81,14 @@ def train_loop(config, model, dataloader, logger):
     
     for current_epoch in range(start_epoch, total_epochs):
         tepoch = tqdm(range(0, len(dataloader)), unit="batch")
+        last_step = len(dataloader)-1
         tepoch.set_description("Epoch: {}".format(current_epoch))
         dataloader_iter = iter(dataloader)
         
         for current_step in tepoch:
             batch = dataloader_iter.next()
-            stats = model.step(batch, current_step)
+            is_last_step = (current_step==last_step)
+            stats = model.step(batch, current_step, is_last_step)
             
             tepoch.set_postfix(**stats)
             

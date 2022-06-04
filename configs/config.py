@@ -56,6 +56,7 @@ _C.train.temperature = 0.07
 _C.train.bank_momentum_eta = 0.5
 _C.train.betas=(0.9, 0.999)
 _C.train.eps=1e-08
+_C.train.grad_accum_batch_size = 32
 
 _C.model.backbone = 'resnet50'
 _C.model.backbone_pretrained = True

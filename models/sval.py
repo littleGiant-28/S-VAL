@@ -24,6 +24,14 @@ class SVAL(object):
         self.ckpt_list = deque([])
         self.start_epoch = 0
         
+        self.grad_accum_steps = (
+            self.config.train.batch_size // self.config.grad_accum_batch_size
+        )
+        msg = ("Gradient accumulation number of steps: {}"
+               .format(self.grad_accum_steps))
+        print(msg)
+        self.logger.info(msg)
+
         if self.is_training:
             self.logger.info("Creating optimizer for training")
             self.optimizer = torch.optim.Adam(
@@ -112,7 +120,7 @@ class SVAL(object):
         self.slpd_bank.reset_after_epoch()
         self.td_bank.reset_after_epoch()
             
-    def step(self, batch, current_step):
+    def step(self, batch, current_step, is_last_step):
         #TODO: Add checks for nan, inf; Check targets again
         image = batch['image'].to(self.device)
         patch_image = batch['patch_image'].to(self.device)
@@ -152,7 +160,8 @@ class SVAL(object):
             self.config.train.lambda_td * td_loss
             
         total_loss.backward()
-        self.optimizer.step()
+        if ((current_step+1) % self.grad_accum_steps == 0) or is_last_step:
+            self.optimizer.step()
         
         self.slpd_bank.update(p_slp_features.detach(), indices)
         self.td_bank.update(p_texture_features.detach(), indices)
