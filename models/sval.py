@@ -25,7 +25,7 @@ class SVAL(object):
         self.start_epoch = 0
         
         self.grad_accum_steps = (
-            self.config.train.batch_size // self.config.grad_accum_batch_size
+            self.config.train.batch_size // self.config.train.grad_accum_batch_size
         )
         msg = ("Gradient accumulation number of steps: {}"
                .format(self.grad_accum_steps))

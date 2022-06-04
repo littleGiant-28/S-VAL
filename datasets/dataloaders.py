@@ -38,7 +38,7 @@ def get_polyvore_dataloader(config, logger):
     
     dataloader = torch.utils.data.DataLoader(
         polyvore_dataset,
-        batch_size=config.train.batch_size,
+        batch_size=config.train.grad_accum_batch_size,
         collate_fn=polyvore_collate_fn,
         shuffle=True,
         num_workers=config.data.num_workers,
