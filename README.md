@@ -6,5 +6,6 @@ This repository contains implementation of S-VAL from "Self-supervised Visual At
 
 * Paper: https://arxiv.org/pdf/2008.00348.pdf
 * Polyvore dataset: https://github.com/xthan/polyvore-dataset
+* Polyvore dataset: https://www.kaggle.com/datasets/dnepozitek/polyvore-outfits
 * Polyvore dataset details: https://mmfashion.readthedocs.io/en/latest/dataset/FASHION_COMPATIBILITY_DATASET/
 

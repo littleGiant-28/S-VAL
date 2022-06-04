@@ -102,7 +102,7 @@ class FeatureExtractor(torch.nn.Module):
         backbone = self.supported_backbones[backbone_name](
             pretrained=config.model.backbone_pretrained
         )
-        backbone = torch.nn.Sequential(*(list(backbone.children())[:-2]))
+        backbone = torch.nn.Sequential(*(list(backbone.children())[:-1]))
         return backbone, self.feature_sizes[config.model.backbone]
     
     def get_slpd_features(self, image_patch):

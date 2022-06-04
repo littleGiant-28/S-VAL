@@ -8,7 +8,7 @@ def create_logger(logfile_path):
         level = logging.INFO,
         format = ft,
         handlers = [logging.FileHandler(logfile_path),
-                    logging.StreamHandler(sys.stdout)
+                    #logging.StreamHandler(sys.stdout)
         ],
         datefmt='%Y-%m-%d %H:%M:%S',
     )
