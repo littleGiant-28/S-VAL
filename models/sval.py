@@ -20,9 +20,13 @@ class SVAL(object):
         self.feature_model = FeatureExtractor(
             self.config, self.logger
         ).to(self.device)
+
+        if self.config.save_load.load_models:
+            self.load_model()
         
         self.ckpt_list = deque([])
         self.start_epoch = 0
+        self.total_steps = 0
         
         self.grad_accum_steps = (
             self.config.train.batch_size // self.config.train.grad_accum_batch_size
@@ -63,7 +67,7 @@ class SVAL(object):
                    .format(self.config.general.device))
             raise ValueError(msg)
         
-    def save_model(self, current_epoch):
+    def save_model(self, current_epoch, total_steps):
         weight_name = 'sval-{}.pth'.format(current_epoch)
         save_path = os.path.join(
             self.config.save_load.exp_path, weight_name
@@ -75,6 +79,7 @@ class SVAL(object):
 
         torch.save({
             'current_epoch': current_epoch,
+            'total_steps': total_steps,
             'sval': self.feature_model.state_dict(),
             'optimizer': self.optimizer.state_dict(),
             'slpd_bank': self.slpd_bank.state_dict(),
@@ -103,6 +108,7 @@ class SVAL(object):
         if not self.config.save_load.pretrained:
             self.optimizer.load_state_dict(ckpt['optimizer'])
             self.start_epoch = ckpt['current_epoch']
+            self.total_steps = ckpt['total_steps']
             self.slpd_bank.load_state_dict(ckpt['slpd_bank'])
             self.td_bank.load_state_dict(ckpt['td_bank'])
         else:
@@ -120,7 +126,7 @@ class SVAL(object):
         self.slpd_bank.reset_after_epoch()
         self.td_bank.reset_after_epoch()
             
-    def step(self, batch, current_step, is_last_step):
+    def step(self, batch, current_epoch, current_step, is_last_step, total_steps):
         #TODO: Add checks for nan, inf; Check targets again
         image = batch['image'].to(self.device)
         patch_image = batch['patch_image'].to(self.device)
@@ -144,16 +150,28 @@ class SVAL(object):
         ).sum(dim=2).mean()
         hist_loss = (hist_loss0 + hist_loss1) / 2
 
+        if torch.any(torch.isnan(hist_loss.detach())) or \
+            torch.any(torch.isinf(hist_loss.detach())):
+            raise Exception("Hist loss is nan or inf: ", hist_loss)
+
         logit_slpd_vector = torch.matmul(
             p_slp_features, self.slpd_bank.memory.T
         ) / self.config.train.temperature
         slpd_loss = F.cross_entropy(logit_slpd_vector, indices)
+
+        if torch.any(torch.isnan(slpd_loss.detach())) or \
+            torch.any(torch.isinf(slpd_loss.detach())):
+            raise Exception("SLPD loss is nan or inf: ", slpd_loss)
         
         logit_td_vector = torch.matmul(
             p_texture_features.view(batch_size, -1), 
             self.td_bank.memory.view(self.td_bank.memory_size[0], -1).T
         ) / self.config.train.temperature
         td_loss = F.cross_entropy(logit_td_vector, indices)
+
+        if torch.any(torch.isnan(td_loss.detach())) or \
+            torch.any(torch.isinf(td_loss.detach())):
+            raise Exception("TD loss is nan or inf: ", td_loss)
         
         total_loss = self.config.train.lambda_rgb * hist_loss + \
             self.config.train.lambda_slpd * slpd_loss + \
@@ -172,12 +190,13 @@ class SVAL(object):
         stats['td_loss'] = td_loss.item()
         stats['total_loss'] = total_loss.item()
         
-        self.tfb_logger.log_scalars(
-            current_step, list(stats.keys()), list(stats.values())
-        )
+        if ((current_step+1) % self.grad_accum_steps == 0) or is_last_step:
+            self.tfb_logger.log_scalars(
+                total_steps, list(stats.keys()), list(stats.values())
+            )
         self.logger.info(
-            "Step {}: Hist loss: {} SLPD Loss: {} TD Loss: {} Total Loss: {}"
-            .format(current_step, stats['hist_loss'], stats['slpd_loss'],
+            "Epoch: {} Step {}: Hist loss: {} SLPD Loss: {} TD Loss: {} Total Loss: {}"
+            .format(current_epoch, current_step, stats['hist_loss'], stats['slpd_loss'],
                     stats['td_loss'], stats['total_loss'])
         )
         

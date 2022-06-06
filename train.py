@@ -74,6 +74,7 @@ def perform_prerequistes(args):
 
 def train_loop(config, model, dataloader, logger):
     start_epoch = model.start_epoch
+    total_steps = model.total_steps
     total_epochs = config.train.epochs
     
     if not (config.save_load.pretrained or config.save_load.load_models):
@@ -88,11 +89,15 @@ def train_loop(config, model, dataloader, logger):
         for current_step in tepoch:
             batch = dataloader_iter.next()
             is_last_step = (current_step==last_step)
-            stats = model.step(batch, current_step, is_last_step)
+            stats = model.step(
+                batch, current_epoch, current_step, is_last_step, total_steps
+            )
             
             tepoch.set_postfix(**stats)
+
+            total_steps += 1
             
-        model.save_model(current_epoch)
+        model.save_model(current_epoch, total_steps)
         model.memory_index_reset()
 
 def main():
