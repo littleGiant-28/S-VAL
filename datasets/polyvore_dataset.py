@@ -55,11 +55,11 @@ class PolyvoreDataset(torch.utils.data.Dataset):
         )
         self._transform = transforms.Compose([
             transforms.ToTensor(),
-            #self.resnet_normalize
+            self.resnet_normalize
         ])
         
     def get_items_list(self, item_json_path):
-        #self.topk = 1024
+        topk = self.config.data.topk
         image_ids = []
         item_categories = []
         with open(item_json_path, 'r') as f:
@@ -73,8 +73,10 @@ class PolyvoreDataset(torch.utils.data.Dataset):
         
         self.logger.info("Total images found: {}".format(len(image_ids)))
         
-        # image_ids = image_ids[:self.topk]
-        # item_categories = item_categories[:self.topk]
+        if topk > 0:
+            self.logger.info("Using only first {} images".format(topk))
+            image_ids = image_ids[:topk]
+            item_categories = item_categories[:topk]
         
         return image_ids, item_categories
 

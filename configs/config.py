@@ -18,6 +18,7 @@ _C.general.notes = """Base Experiment"""
 _C.data.image_root = "data/polyvore_outfits/images"
 _C.data.item_json_path = "data/polyvore_outfits/polyvore_item_metadata.json"
 _C.data.image_extension = ".jpg"
+_C.data.topk = -1
 _C.data.image_resolution = 300
 _C.data.patch_resolution_range = [0.05, 0.15]
 _C.data.patch_resize_resolution = 0.1
