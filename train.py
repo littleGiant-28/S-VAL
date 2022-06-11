@@ -77,9 +77,6 @@ def train_loop(config, model, dataloader, logger):
     total_steps = model.total_steps
     total_epochs = config.train.epochs
     
-    if not (config.save_load.pretrained or config.save_load.load_models):
-        model.initalize_memory(dataloader)
-    
     for current_epoch in range(start_epoch, total_epochs):
         tepoch = tqdm(range(0, len(dataloader)), unit="batch")
         last_step = len(dataloader)-1
@@ -98,7 +95,6 @@ def train_loop(config, model, dataloader, logger):
             total_steps += 1
             
         model.save_model(current_epoch, total_steps)
-        model.memory_index_reset()
 
 def main():
     args = parse_args()

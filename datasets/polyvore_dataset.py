@@ -9,7 +9,7 @@ import numpy as np
 import torch.nn.functional as F
 from torchvision import transforms
 
-from utils import get_fg_mask, get_color_histogram, normalize_image
+from utils import get_fg_mask, get_color_histogram
 
 #../data/polyvore_outfits/images/176341004.jpg
 class PolyvoreDataset(torch.utils.data.Dataset):
@@ -25,21 +25,6 @@ class PolyvoreDataset(torch.utils.data.Dataset):
         self.extension = self.config.data.image_extension
         self.hist_bin_size = self.config.model.hist_bin_size
         self.image_resolution = self.config.data.image_resolution
-        self.patch_resolution_range = self.config.data.patch_resolution_range
-        self.patch_resize_resolution = round(
-            self.config.data.patch_resize_resolution * self.image_resolution
-        )
-        self.patch_sample_mean = np.array([
-            self.config.data.patch_sample_mean, 
-            self.config.data.patch_sample_mean
-        ])
-        self.patch_sample_cov = np.array([
-            [self.config.data.patch_sample_cov, 0], 
-            [0, self.config.data.patch_sample_cov]
-        ])
-        self.patch_sample_range = self.config.data.patch_sample_range
-        self.patch_sample_tries = self.config.data.patch_sample_tries
-        self.patch_sample_white_cutoff = self.config.data.patch_sample_white_cutoff
         
         self.image_ids, self.item_categories = self.get_items_list(
             self.config.data.item_json_path
@@ -82,54 +67,6 @@ class PolyvoreDataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return len(self.image_ids)
-
-    def get_patch_image(self, image, mask):
-        #center = self.image_resolution // 2
-        patch_resolution = round(
-            self.image_resolution * random.uniform(*self.patch_resolution_range)
-        )
-        #line equation, mapping from (-1, 1) to (300, 300)
-        mapping = lambda x: ((self.image_resolution-1)/2) * (x+1)
-        good_x, good_y = np.where(mask == 255)
-        
-        for i in range(1, self.patch_sample_tries+1):
-            sampled_point = np.random.multivariate_normal(
-                self.patch_sample_mean, self.patch_sample_cov, size=(1)
-            ).flatten()
-            x = round(
-                np.clip(mapping(sampled_point[0]),
-                        *self.patch_sample_range).item()
-            )
-            y = round(
-                np.clip(mapping(sampled_point[1]), 
-                        *self.patch_sample_range).item()
-            )
-            
-            if x in good_x and y in good_y:
-            #print("Sampling ran for {} loops".format(i))
-                # patch = image[
-                #     y-patch_resolution:y+patch_resolution, 
-                #     x-patch_resolution:x+patch_resolution
-                # ]
-                # white_ratio = (patch==255).sum() / patch_mask.size
-                # if white_ratio <= self.patch_sample_white_cutoff:
-                #     break
-                patch_mask = mask[
-                    y-patch_resolution:y+patch_resolution, 
-                    x-patch_resolution:x+patch_resolution
-                ]
-                white_ratio = (patch_mask==0).sum() / patch_mask.size
-                if white_ratio <= self.patch_sample_white_cutoff:
-                    break
-        
-        patch = image[
-            y-patch_resolution:y+patch_resolution, 
-            x-patch_resolution:x+patch_resolution
-        ]
-        size = (self.patch_resize_resolution, self.patch_resize_resolution)
-        patch = cv2.resize(patch, size, interpolation=cv2.INTER_CUBIC)
-        
-        return patch, i
     
     def hist_transform(self, hist):
         hist = torch.from_numpy(hist)
@@ -149,21 +86,9 @@ class PolyvoreDataset(torch.utils.data.Dataset):
         )
         global_color_hist = self.hist_transform(global_color_hist)
 
-        patch_image, iters = self.get_patch_image(image, item_mask)
-        patch_color_hist = get_color_histogram(
-            patch_image, None, self.hist_bin_size
-        )
-        patch_color_hist = self.hist_transform(patch_color_hist)
-
         sample = {
             'image': self._transform(image),
-            'patch_image': self._transform(patch_image),
             'global_color_hist': global_color_hist,
-            'patch_color_hist': patch_color_hist,
-            'index': idx,
-            # 'image_name': self.image_ids[idx]
-            # 'iters': iters,
-            # 'mask': item_mask
         }
         
         return sample
