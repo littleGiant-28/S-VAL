@@ -6,14 +6,25 @@ def polyvore_collate_fn(batch):
     image_tensor = torch.stack(
         [item['image'] for item in batch], dim=0
     )
+    patch_image_tensor = torch.stack(
+        [item['patch_image'] for item in batch], dim=0
+    )
     
     global_color_hist_tensor = torch.stack(
         [item['global_color_hist'] for item in batch], dim=0
     )
+    patch_color_hist_tensor = torch.stack(
+        [item['patch_color_hist'] for item in batch], dim=0
+    )
+    
+    indices = torch.LongTensor([item['index'] for item in batch])
     
     batch = {
         'image': image_tensor,
-        'global_color_hist': global_color_hist_tensor
+        'patch_image': patch_image_tensor,
+        'global_color_hist': global_color_hist_tensor,
+        'patch_color_hist': patch_color_hist_tensor,
+        'indices': indices
     }
     
     return batch
@@ -27,7 +38,7 @@ def get_polyvore_dataloader(config, logger):
     
     dataloader = torch.utils.data.DataLoader(
         polyvore_dataset,
-        batch_size=config.train.batch_size,
+        batch_size=config.train.grad_accum_batch_size,
         collate_fn=polyvore_collate_fn,
         shuffle=True,
         num_workers=config.data.num_workers,
