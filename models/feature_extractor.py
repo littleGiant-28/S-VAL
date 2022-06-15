@@ -20,16 +20,13 @@ class ColorHistogramHead(torch.nn.Module):
             torch.nn.Linear(in_features, p_dim),
             torch.nn.ReLU()
         )
-        self.hist_fc = torch.nn.Sequential(
-            torch.nn.Linear(p_dim, 3*hist_size) #3 for RGB
-        )
+        self.hist_fc = torch.nn.Linear(p_dim, 3*hist_size) #3 for RGB
         
     def forward(self, features):
         b, _ = features.shape
         x = self.projection_fc(features)
         x = self.hist_fc(x)
         x = x.reshape(b, 3, -1)
-        x = F.normalize(x, p=2, dim=-1)
         hist_probs = F.softmax(x, dim=-1)
         
         return hist_probs
