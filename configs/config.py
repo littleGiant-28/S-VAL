@@ -62,7 +62,7 @@ _C.train.grad_accum_batch_size = 16
 _C.model.backbone = 'resnet50'
 _C.model.backbone_pretrained = True
 _C.model.projection_dim = 128
-_C.model.hist_bin_size = 10
+_C.model.hist_bin_size = 25
 
 def get_cfg_defaults():
     """Get a yacs CfgNode object with default values"""
