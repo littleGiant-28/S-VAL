@@ -96,6 +96,8 @@ class SVAL(object):
             'total_steps': total_steps,
             'sval': self.feature_model.state_dict(),
             'optimizer': self.optimizer.state_dict(),
+            'slpd_bank': self.slpd_bank.state_dict(),
+            'td_bank': self.td_bank.state_dict()
         }, save_path)
 
         if len(self.ckpt_list) > self.config.save_load.keep_last_ckpts:
@@ -121,6 +123,8 @@ class SVAL(object):
             self.optimizer.load_state_dict(ckpt['optimizer'])
             self.start_epoch = ckpt['current_epoch']
             self.total_steps = ckpt['total_steps']
+            self.slpd_bank.load_state_dict(ckpt['slpd_bank'])
+            self.td_bank.load_state_dict(ckpt['td_bank'])
         else:
             self.logger.info("Using weights as pertrained model")
 
