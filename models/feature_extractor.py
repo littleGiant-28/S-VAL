@@ -41,13 +41,14 @@ class TextureDiscriminationHead(torch.nn.Module):
             torch.nn.Linear(in_features, p_dim),
             torch.nn.ReLU(),
             torch.nn.Linear(p_dim, p_dim),
-            torch.nn.ReLU()
         )
         
     def forward(self, features):
+        b, _ = features.shape
         x = self.projection_head(features)
         x = F.normalize(x, p=2, dim=-1)
         G = gram_matrix(x)
+        G = G.view(b, -1)
         
         return G
 
@@ -61,7 +62,6 @@ class LocalPatchDiscriminatorHead(torch.nn.Module):
             torch.nn.Linear(in_features, p_dim),
             torch.nn.ReLU(),
             torch.nn.Linear(p_dim, p_dim),
-            torch.nn.ReLU()
         )
         
     def forward(self, features):
@@ -118,12 +118,12 @@ class FeatureExtractor(torch.nn.Module):
         features = self.backbone(image)
         
         features = features.reshape(-1, features.shape[1])
-        global_hist_probs = self.colorhist_head(features)
+        global_hist_probs = self.colorhist_head(features.clone())
         texture_features = self.td_head(features)
         
         patch_features = self.backbone(image_patch)
         patch_features = patch_features.reshape(-1, patch_features.shape[1])
-        patch_hist_probs = self.colorhist_head(patch_features)
+        patch_hist_probs = self.colorhist_head(patch_features.clone())
         slp_features = self.slpd_head(patch_features)
         
         return global_hist_probs, texture_features, \

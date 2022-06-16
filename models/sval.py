@@ -8,6 +8,20 @@ import torch.nn.functional as F
 from .feature_extractor import FeatureExtractor
 from utils import SLPDMemoryBank, TDMemoryBank
 
+def get_tgn(model):
+    tgn = 0
+
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            param_norm = param.grad.detach().data.norm(2).item()
+            tgn = tgn + (param_norm ** 2)
+        else:
+            print(name)
+
+    tgn = tgn ** 0.5
+
+    return tgn
+
 class SVAL(object):
     
     def __init__(self, config, logger, tfb_logger, no_images):
@@ -28,9 +42,9 @@ class SVAL(object):
         self.start_epoch = 0
         self.total_steps = 0
         
-        # self.grad_accum_steps = (
-        #     self.config.train.batch_size // self.config.train.grad_accum_batch_size
-        # )
+        self.grad_accum_steps = (
+            self.config.train.batch_size // self.config.train.grad_accum_batch_size
+        )
         msg = ("Gradient accumulation number of steps: {}"
                .format(self.grad_accum_steps))
         print(msg)
@@ -44,6 +58,16 @@ class SVAL(object):
                 betas=self.config.train.betas,
                 eps=self.config.train.eps
             )
+
+            slpd_memory_size = (no_images, self.config.model.projection_dim)
+            td_memory_size = (no_images, self.config.model.projection_dim * \
+                                self.config.model.projection_dim)
+            self.slpd_bank = SLPDMemoryBank(
+                slpd_memory_size, self.config.train.bank_momentum_eta, self.logger
+            ).to(self.device)
+            self.td_bank = TDMemoryBank(
+                td_memory_size, self.config.train.bank_momentum_eta, self.logger
+            ).to(self.device)
 
     def get_device(self):
         if self.config.general.device == 'cpu':
@@ -99,37 +123,101 @@ class SVAL(object):
             self.total_steps = ckpt['total_steps']
         else:
             self.logger.info("Using weights as pertrained model")
+
+    def initalize_memory(self, dataloader):
+        self.slpd_bank.initialize_memory(
+            self.feature_model, dataloader, self.device
+        )
+        self.td_bank.initialize_memory(
+            self.feature_model, dataloader, self.device
+        )
+
+    def memory_index_reset(self):
+        self.slpd_bank.reset_after_epoch()
+        self.td_bank.reset_after_epoch()
             
     def step(self, batch, current_epoch, current_step, is_last_step, total_steps):
         #TODO: Add checks for nan, inf; Check targets again
         image = batch['image'].to(self.device)
+        patch_image = batch['patch_image'].to(self.device)
         global_color_hist = batch['global_color_hist'].to(self.device)
-        
-        batch_size = image.shape[0]
+        patch_color_hist = batch['patch_color_hist'].to(self.device)
+        indices = batch['indices'].to(self.device)
+
         stats = {}
         
         self.feature_model.train()
-        p_global_color_hist = self.feature_model(image)
-            
-        # hist_loss = F.kl_div(
-        #     global_color_hist, p_global_color_hist, reduction='none'
-        # ).sum(dim=2).mean()
-        hist_loss = p_global_color_hist * (p_global_color_hist.log() - global_color_hist)
-        hist_loss = hist_loss.sum(dim=(1,2)).mean()
-        
-        total_loss = self.config.train.lambda_rgb * hist_loss      
-        total_loss.backward()
+        p_global_color_hist, p_texture_features, \
+            p_slp_features, p_patch_color_hist \
+                = self.feature_model(image, patch_image)
 
-        #if ((current_step+1) % self.grad_accum_steps == 0) or is_last_step:
-        self.optimizer.step()
+        hist_loss_global = p_global_color_hist * \
+                            (p_global_color_hist.log() - global_color_hist)
+        hist_loss_global = hist_loss_global.sum(dim=(1, 2)).mean()
+        hist_loss_local = p_patch_color_hist * \
+                            (p_patch_color_hist.log() - patch_color_hist)
+        hist_loss_local = hist_loss_local.sum(dim=(1,2)).mean()
+        hist_loss = (hist_loss_global + hist_loss_local) / 2
+
+        if torch.any(torch.isnan(hist_loss.detach())) or \
+            torch.any(torch.isinf(hist_loss.detach())):
+            raise Exception("Hist loss is nan or inf: ", hist_loss)
+
+        logit_slpd_vector = torch.matmul(
+            p_slp_features, self.slpd_bank.memory.T
+        ) / self.config.train.temperature
+        slpd_loss = F.cross_entropy(logit_slpd_vector, indices)
+
+        if torch.any(torch.isnan(slpd_loss.detach())) or \
+            torch.any(torch.isinf(slpd_loss.detach())):
+            raise Exception("SLPD loss is nan or inf: ", slpd_loss)
+
+        logit_td_vector = torch.matmul(
+            p_texture_features, 
+            self.td_bank.memory.T
+        ) / self.config.train.temperature
+        td_loss = F.cross_entropy(logit_td_vector, indices)
+
+        if torch.any(torch.isnan(td_loss.detach())) or \
+            torch.any(torch.isinf(td_loss.detach())):
+            raise Exception("TD loss is nan or inf: ", td_loss)
+
+        total_loss = self.config.train.lambda_rgb * hist_loss + \
+            self.config.train.lambda_slpd * slpd_loss + \
+            self.config.train.lambda_td * td_loss  
+
+        total_loss = total_loss / (self.grad_accum_steps)
+        total_loss.backward()
         
         #logging
         stats['hist_loss'] = hist_loss.item()
+        stats['hist_loss_local'] = hist_loss_local.item()
+        stats['hist_loss_global'] = hist_loss_global.item()
+        stats['slpd_loss'] = slpd_loss.item()
+        stats['td_loss'] = td_loss.item()
         stats['total_loss'] = total_loss.item()
+        stats['tgn'] = get_tgn(self.feature_model)
 
         self.tfb_logger.log_scalars(
             total_steps, list(stats.keys()), list(stats.values())
         )
+        self.tfb_logger.log_params_gradients(total_steps, self.feature_model)
+
+        if ((total_steps+1) % self.grad_accum_steps == 0) or is_last_step:
+            self.optimizer.step()
+            self.optimizer.zero_grad()
+
+        self.td_bank.update(p_texture_features.detach(), indices)
+        self.slpd_bank.update(p_slp_features.detach(), indices)
+
+        self.logger.info(
+            "Epoch: {} Step {}: Hist loss: {} SLPD Loss: {} TD Loss: {} Total Loss: {}"
+            .format(current_epoch, current_step, stats['hist_loss'], stats['slpd_loss'],
+                    stats['td_loss'], stats['total_loss'])
+        )
+
+        # stats.pop('hist_loss_local')
+        # stats.pop('hist_loss_global')
         
         return stats
         
