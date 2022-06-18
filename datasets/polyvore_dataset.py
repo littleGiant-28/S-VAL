@@ -1,6 +1,7 @@
 import os
 import glob
 import json
+import pickle
 import random
 
 import cv2
@@ -14,10 +15,11 @@ from utils import get_fg_mask, get_color_histogram, normalize_image
 #../data/polyvore_outfits/images/176341004.jpg
 class PolyvoreDataset(torch.utils.data.Dataset):
     
-    def __init__(self, config, logger):
+    def __init__(self, config, logger, phase):
         super(PolyvoreDataset, self).__init__()
         self.config = config
         self.logger = logger
+        self.phase = phase
         self.image_root = self.config.data.image_root
         self.semantic_categories_supported = [
             "tops", "bottoms", "all-body", "outerwear"
@@ -41,6 +43,7 @@ class PolyvoreDataset(torch.utils.data.Dataset):
         self.patch_sample_tries = self.config.data.patch_sample_tries
         self.patch_sample_white_cutoff = self.config.data.patch_sample_white_cutoff
         
+        self.split_indices = self.load_split_index()
         self.image_ids, self.item_categories = self.get_items_list(
             self.config.data.item_json_path
         )
@@ -57,6 +60,16 @@ class PolyvoreDataset(torch.utils.data.Dataset):
             transforms.ToTensor(),
             self.resnet_normalize
         ])
+
+    def load_split_index(self):
+        file_path = self.config.save_load.train_split if self.phase == 'train' \
+                        else self.config.save_load.test_split
+        if not os.path.exists(file_path):
+            raise Exception("Split pickle file {} not found".format(file_path))
+        with open(file_path, 'rb') as f:
+            indices = pickle.load(f)
+
+        return indices
         
     def get_items_list(self, item_json_path):
         topk = self.config.data.topk
@@ -72,6 +85,11 @@ class PolyvoreDataset(torch.utils.data.Dataset):
                 item_categories.append(item_value['semantic_category'])
         
         self.logger.info("Total images found: {}".format(len(image_ids)))
+
+        image_ids = [image_ids[ind] for ind in self.split_indices]
+        item_categories = [item_categories[ind] for ind in self.split_indices]
+
+        self.logger.info("This split uses images {}".format(len(image_ids)))
         
         if topk > 0:
             self.logger.info("Using only first {} images".format(topk))

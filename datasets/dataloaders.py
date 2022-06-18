@@ -33,11 +33,11 @@ def worker_init_fn_for_seed(worker_id):
     np.random.seed(np.random.get_state()[1][0] + worker_id)
 
 def get_polyvore_dataloader(config, logger):
-    polyvore_dataset = PolyvoreDataset(config, logger)
-    no_images = len(polyvore_dataset)
+    train_polyvore_dataset = PolyvoreDataset(config, logger, phase="train")
+    no_images = len(train_polyvore_dataset)
     
-    dataloader = torch.utils.data.DataLoader(
-        polyvore_dataset,
+    train_dataloader = torch.utils.data.DataLoader(
+        train_polyvore_dataset,
         batch_size=config.train.grad_accum_batch_size,
         collate_fn=polyvore_collate_fn,
         shuffle=True,
@@ -46,5 +46,18 @@ def get_polyvore_dataloader(config, logger):
         prefetch_factor=config.data.prefetch_factor,
         drop_last=False   
     )
+
+    test_polyvore_dataset = PolyvoreDataset(config, logger, phase="test")
+    test_dataloader = torch.utils.data.DataLoader(
+        test_polyvore_dataset,
+        batch_size=config.train.grad_accum_batch_size,
+        collate_fn=polyvore_collate_fn,
+        shuffle=False,
+        num_workers=config.data.num_workers,
+        worker_init_fn=worker_init_fn_for_seed,
+        prefetch_factor=config.data.prefetch_factor,
+        drop_last=False
+    )
+
     
-    return dataloader, no_images
+    return train_dataloader, test_dataloader, no_images

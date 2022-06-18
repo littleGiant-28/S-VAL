@@ -203,7 +203,8 @@ class SVAL(object):
         stats['tgn'] = get_tgn(self.feature_model)
 
         self.tfb_logger.log_scalars(
-            total_steps, list(stats.keys()), list(stats.values())
+            total_steps, list(stats.keys()), list(stats.values()),
+            prefix="train/"
         )
         self.tfb_logger.log_params_gradients(total_steps, self.feature_model)
 
@@ -223,6 +224,67 @@ class SVAL(object):
         # stats.pop('hist_loss_local')
         # stats.pop('hist_loss_global')
         
+        return stats
+
+    def test_step(self, batch):
+        with torch.no_grad():
+            image = batch['image'].to(self.device)
+            patch_image = batch['patch_image'].to(self.device)
+            global_color_hist = batch['global_color_hist'].to(self.device)
+            patch_color_hist = batch['patch_color_hist'].to(self.device)
+            indices = batch['indices'].to(self.device)
+
+            stats = {}
+
+            self.feature_model.eval()
+
+            p_global_color_hist, p_texture_features, \
+                p_slp_features, p_patch_color_hist \
+                    = self.feature_model(image, patch_image)
+
+            hist_loss_global = p_global_color_hist * \
+                                (p_global_color_hist.log() - global_color_hist)
+            hist_loss_global = hist_loss_global.sum(dim=(1, 2)).mean()
+            hist_loss_local = p_patch_color_hist * \
+                                (p_patch_color_hist.log() - patch_color_hist)
+            hist_loss_local = hist_loss_local.sum(dim=(1,2)).mean()
+            hist_loss = (hist_loss_global + hist_loss_local) / 2
+
+            if torch.any(torch.isnan(hist_loss.detach())) or \
+                torch.any(torch.isinf(hist_loss.detach())):
+                raise Exception("Hist loss is nan or inf: ", hist_loss)
+
+            logit_slpd_vector = torch.matmul(
+                p_slp_features, self.slpd_bank.memory.T
+            ) / self.config.train.temperature
+            slpd_loss = F.cross_entropy(logit_slpd_vector, indices)
+
+            if torch.any(torch.isnan(slpd_loss.detach())) or \
+                torch.any(torch.isinf(slpd_loss.detach())):
+                raise Exception("SLPD loss is nan or inf: ", slpd_loss)
+
+            logit_td_vector = torch.matmul(
+                p_texture_features, 
+                self.td_bank.memory.T
+            ) / self.config.train.temperature
+            td_loss = F.cross_entropy(logit_td_vector, indices)
+
+            if torch.any(torch.isnan(td_loss.detach())) or \
+                torch.any(torch.isinf(td_loss.detach())):
+                raise Exception("TD loss is nan or inf: ", td_loss)
+
+            total_loss = self.config.train.lambda_rgb * hist_loss + \
+                self.config.train.lambda_slpd * slpd_loss + \
+                self.config.train.lambda_td * td_loss  
+
+            #logging
+            stats['hist_loss'] = hist_loss.item()
+            stats['hist_loss_local'] = hist_loss_local.item()
+            stats['hist_loss_global'] = hist_loss_global.item()
+            stats['slpd_loss'] = slpd_loss.item()
+            stats['td_loss'] = td_loss.item()
+            stats['total_loss'] = total_loss.item()
+
         return stats
         
             

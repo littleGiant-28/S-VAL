@@ -1,6 +1,7 @@
 import os
 import random
 import argparse
+from collections import defaultdict
 
 import torch
 import numpy as np
@@ -72,19 +73,26 @@ def perform_prerequistes(args):
 
     return cfg, logger, tfb_logger
 
-def train_loop(config, model, dataloader, logger):
+def update_avg_states(avg_stats, new_stats, step):
+    for key, value in new_stats.items():
+        avg_stats[key] = ((avg_stats[key]*step) + value) / (step+1)
+
+def train_loop(config, model, dataloaders, all_loggers):
     start_epoch = model.start_epoch
     total_steps = model.total_steps
     total_epochs = config.train.epochs
 
+    train_dataloader, test_dataloader = dataloaders
+    logger, tfb_logger = all_loggers
+
     if not (config.save_load.pretrained or config.save_load.load_models):
-        model.initalize_memory(dataloader)
+        model.initalize_memory(train_dataloader)
     
     for current_epoch in range(start_epoch, total_epochs):
-        tepoch = tqdm(range(0, len(dataloader)), unit="batch")
-        last_step = len(dataloader)-1
+        tepoch = tqdm(range(0, len(train_dataloader)), unit="batch")
+        last_step = len(train_dataloader)-1
         tepoch.set_description("Epoch: {}".format(current_epoch))
-        dataloader_iter = iter(dataloader)
+        dataloader_iter = iter(train_dataloader)
         
         for current_step in tepoch:
             batch = dataloader_iter.next()
@@ -100,6 +108,36 @@ def train_loop(config, model, dataloader, logger):
         model.save_model(current_epoch, total_steps)
         model.memory_index_reset()
 
+        tepoch = tqdm(range(0, len(test_dataloader)), unit="batch")
+        tepoch.set_description("Test Epoch: {}".format(current_epoch))
+        dataloader_iter = iter(test_dataloader)
+
+        avg_stats = defaultdict(int)
+
+        for current_step in tepoch:
+            batch = dataloader_iter.next()
+            stats = model.test_step(batch)
+
+            tepoch.set_postfix(**stats)
+            update_avg_states(avg_stats, stats, current_step)
+
+            total_steps += 1
+
+        logger.info("Validation set wise average results: ")
+        logger.info(
+            "Epoch: {} Hist loss: {} Hist local loss: {} Hist global loss: {} "
+            "SLPD Loss: {} TD Loss: {} Total Loss: {}"
+            .format(current_epoch, avg_stats['hist_loss'], 
+            avg_stats['hist_loss_local'], avg_stats['hist_loss_global'], 
+            avg_stats['slpd_loss'], avg_stats['td_loss'],
+            avg_stats['total_loss'])
+        )
+
+        tfb_logger.log_scalars(
+            current_epoch, list(avg_stats.keys()), list(avg_stats.values()),
+            prefix="test/"
+        )
+
 def main():
     args = parse_args()
     cfg, logger, tfb_logger = perform_prerequistes(args)
@@ -110,14 +148,15 @@ def main():
     
     logger.info("Constructing training dataloader")
     print("Constructing training dataloader")
-    dataloader, no_image = get_polyvore_dataloader(cfg, logger)
+    train_dataloader, test_dataloader, no_image = get_polyvore_dataloader(cfg, logger)
+    dataloaders = (train_dataloader, test_dataloader)
     
     print("Constructing SVAL class instance")
     logger.info("Constructing SVAL class instance")
     model = SVAL(cfg, logger, tfb_logger, no_image)
     logger.info("SVAL class instance intialized sucessfully")
     
-    train_loop(cfg, model, dataloader, logger)
+    train_loop(cfg, model, dataloaders, (logger, tfb_logger))
 
 if __name__ == '__main__':
     main()

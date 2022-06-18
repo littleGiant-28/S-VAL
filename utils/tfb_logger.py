@@ -17,7 +17,7 @@ class TFBLogger(object):
     def close(self):
         self.tfb_writer.close()
 
-    def log_scalars(self, iter_no, tags, values):
+    def log_scalars(self, iter_no, tags, values, prefix=''):
         if iter_no % self.log_interval == 0:
             if isinstance(values, torch.Tensor): 
                 values = values.detach().cpu().numpy()
@@ -28,7 +28,7 @@ class TFBLogger(object):
                     self.tfb_writer.add_scalars(tag, value, global_step=iter_no)
                 else:
                     self.tfb_writer.add_scalar(
-                        tag, float(value), global_step=iter_no
+                        prefix + tag, float(value), global_step=iter_no
                     )
 
             self.tfb_writer.flush()

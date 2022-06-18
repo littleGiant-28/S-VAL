@@ -40,6 +40,8 @@ _C.save_load.override_dir = False
 _C.save_load.load_models = False
 _C.save_load.pretrained = False
 _C.save_load.load_path = ''
+_C.save_load.train_split = "data/splits/train_list.pkl"
+_C.save_load.test_split = "data/splits/test_list.pkl"
 
 _C.logging.tfb_log_dir = 'runs'
 _C.logging.tfb_log_interval = 1
