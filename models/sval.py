@@ -56,7 +56,8 @@ class SVAL(object):
                 list(self.feature_model.parameters()),
                 lr=self.config.train.lr,
                 betas=self.config.train.betas,
-                eps=self.config.train.eps
+                eps=self.config.train.eps,
+                weight_decay=self.config.train.weight_decay
             )
 
             slpd_memory_size = (no_images, self.config.model.projection_dim)
@@ -215,11 +216,11 @@ class SVAL(object):
         self.td_bank.update(p_texture_features.detach(), indices)
         self.slpd_bank.update(p_slp_features.detach(), indices)
 
-        self.logger.info(
-            "Epoch: {} Step {}: Hist loss: {} SLPD Loss: {} TD Loss: {} Total Loss: {}"
-            .format(current_epoch, current_step, stats['hist_loss'], stats['slpd_loss'],
-                    stats['td_loss'], stats['total_loss'])
-        )
+        # self.logger.info(
+        #     "Epoch: {} Step {}: Hist loss: {} SLPD Loss: {} TD Loss: {} Total Loss: {}"
+        #     .format(current_epoch, current_step, stats['hist_loss'], stats['slpd_loss'],
+        #             stats['td_loss'], stats['total_loss'])
+        # )
 
         # stats.pop('hist_loss_local')
         # stats.pop('hist_loss_global')
