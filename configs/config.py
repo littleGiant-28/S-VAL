@@ -30,6 +30,7 @@ _C.data.patch_sample_white_cutoff = 0.6
 _C.data.num_workers = 2
 _C.data.prefetch_factor = 2
 _C.data.stability_constant = 1e-8
+_C.data.apply_norm = True
 
 _C.save_load.exp_root = 'experiments'
 _C.save_load.exp_name = 'experiment_1'

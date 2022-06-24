@@ -114,6 +114,12 @@ class FeatureExtractor(torch.nn.Module):
         
         return td_features
 
+    def get_embeddings(self, image):
+        b = image.shape[0]
+        features = self.backbone(image).reshape(b, -1)
+
+        return features
+
     def forward(self, image, image_patch):
         features = self.backbone(image)
         

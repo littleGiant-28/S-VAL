@@ -56,10 +56,14 @@ class PolyvoreDataset(torch.utils.data.Dataset):
         self.resnet_normalize = transforms.Normalize(
             mean=[0.406, 0.456, 0.485], std=[0.225, 0.224, 0.229]
         )
-        self._transform = transforms.Compose([
-            transforms.ToTensor(),
-            self.resnet_normalize
-        ])
+
+        if self.config.data.apply_norm:
+            self._transform = transforms.ToTensor()
+        else:
+            self._transform = transforms.Compose([
+                transforms.ToTensor(),
+                self.resnet_normalize
+            ])
 
     def load_split_index(self):
         file_path = self.config.save_load.train_split if self.phase == 'train' \
@@ -179,7 +183,7 @@ class PolyvoreDataset(torch.utils.data.Dataset):
             'global_color_hist': global_color_hist,
             'patch_color_hist': patch_color_hist,
             'index': idx,
-            # 'image_name': self.image_ids[idx]
+            'image_name': self.image_ids[idx]
             # 'iters': iters,
             # 'mask': item_mask
         }
