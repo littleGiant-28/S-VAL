@@ -69,6 +69,8 @@ class SVAL(object):
             self.td_bank = TDMemoryBank(
                 td_memory_size, self.config.train.bank_momentum_eta, self.logger
             ).to(self.device)
+        else:
+            self.feature_model.eval()
 
     def get_device(self):
         if self.config.general.device == 'cpu':
@@ -255,35 +257,12 @@ class SVAL(object):
                 torch.any(torch.isinf(hist_loss.detach())):
                 raise Exception("Hist loss is nan or inf: ", hist_loss)
 
-            logit_slpd_vector = torch.matmul(
-                p_slp_features, self.slpd_bank.memory.T
-            ) / self.config.train.temperature
-            slpd_loss = F.cross_entropy(logit_slpd_vector, indices)
-
-            if torch.any(torch.isnan(slpd_loss.detach())) or \
-                torch.any(torch.isinf(slpd_loss.detach())):
-                raise Exception("SLPD loss is nan or inf: ", slpd_loss)
-
-            logit_td_vector = torch.matmul(
-                p_texture_features, 
-                self.td_bank.memory.T
-            ) / self.config.train.temperature
-            td_loss = F.cross_entropy(logit_td_vector, indices)
-
-            if torch.any(torch.isnan(td_loss.detach())) or \
-                torch.any(torch.isinf(td_loss.detach())):
-                raise Exception("TD loss is nan or inf: ", td_loss)
-
-            total_loss = self.config.train.lambda_rgb * hist_loss + \
-                self.config.train.lambda_slpd * slpd_loss + \
-                self.config.train.lambda_td * td_loss  
+            total_loss = self.config.train.lambda_rgb * hist_loss
 
             #logging
             stats['hist_loss'] = hist_loss.item()
             stats['hist_loss_local'] = hist_loss_local.item()
             stats['hist_loss_global'] = hist_loss_global.item()
-            stats['slpd_loss'] = slpd_loss.item()
-            stats['td_loss'] = td_loss.item()
             stats['total_loss'] = total_loss.item()
 
         return stats
