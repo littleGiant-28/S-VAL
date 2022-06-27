@@ -62,6 +62,8 @@ _C.train.betas=(0.9, 0.999)
 _C.train.eps=1e-08
 _C.train.grad_accum_batch_size = 16
 _C.train.weight_decay = 0.
+_C.train.do_val = False
+_C.train.hist_stability_constant = 1.0e-20
 
 _C.model.backbone = 'resnet50'
 _C.model.backbone_pretrained = True
