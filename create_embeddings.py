@@ -39,6 +39,14 @@ def parse_args():
         "--image-count", dest="image_count", type=int, default=1000,
         help="Number of images to project in viz"
     )
+    parser.add_argument(
+        "--device-id", dest="device_id", type=int, default=0,
+        help="GPU device id to be used, CPU yet not supported"
+    )
+    parser.add_argument(
+        "--phase", dest="phase", type=str, default="train",
+        help="Whether to use train or val images for viz"
+    )
 
     return parser.parse_args()
 
@@ -60,13 +68,14 @@ def main():
     cfg.save_load.pretrained = True
     cfg.save_load.load_path = args.ckpt_model
     cfg.data.apply_norm = False
+    cfg.general.device_id = int(args.device_id)
     cfg.freeze()
     logger = create_logger(
-        os.path.join(os.path.dirname(args.ckpt_model), "emb_logs.txt")
+        os.path.join(os.path.dirname(args.ckpt_model), args.phase + "_emb_logs.txt")
     )
 
     print("Creating dataset")
-    dataset = PolyvoreDataset(cfg, logger, phase="train")
+    dataset = PolyvoreDataset(cfg, logger, phase=args.phase)
     no_images = len(dataset)
     print("Creating model")
     model = SVAL(cfg, logger, None, no_images)
@@ -77,8 +86,10 @@ def main():
     image_mats = []
     label_list = []
 
+    count = args.image_count if args.image_count > 0 else no_images
+
     with torch.no_grad():
-        for i in tqdm(range(args.image_count)):
+        for i in tqdm(range(count)):
             sample = dataset[i]
             image = sample['image'].unsqueeze(0).to(model.device)
             image_name = sample['image_name']
