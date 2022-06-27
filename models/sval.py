@@ -22,6 +22,20 @@ def get_tgn(model):
 
     return tgn
 
+def optimizer_to(optimizer, device):
+     for param in optimizer.state.values():
+        # Not sure there are any global tensors in the state dict
+        if isinstance(param, torch.Tensor):
+            param.data = param.data.to(device)
+            if param._grad is not None:
+                param._grad.data = param._grad.data.to(device)
+        elif isinstance(param, dict):
+            for subparam in param.values():
+                if isinstance(subparam, torch.Tensor):
+                    subparam.data = subparam.data.to(device)
+                    if subparam._grad is not None:
+                        subparam._grad.data = subparam._grad.data.to(device)
+
 class SVAL(object):
     
     def __init__(self, config, logger, tfb_logger, no_images):
@@ -33,14 +47,12 @@ class SVAL(object):
         
         self.feature_model = FeatureExtractor(
             self.config, self.logger
-        ).to(self.device)
+        )
 
-        if self.config.save_load.load_models:
-            self.load_model()
-        
         self.ckpt_list = deque([])
         self.start_epoch = 0
         self.total_steps = 0
+        self.hist_stability_const = self.config.train.hist_stability_constant
         
         self.grad_accum_steps = (
             self.config.train.batch_size // self.config.train.grad_accum_batch_size
@@ -59,18 +71,26 @@ class SVAL(object):
                 eps=self.config.train.eps,
                 weight_decay=self.config.train.weight_decay
             )
-
             slpd_memory_size = (no_images, self.config.model.projection_dim)
             td_memory_size = (no_images, self.config.model.projection_dim * \
                                 self.config.model.projection_dim)
             self.slpd_bank = SLPDMemoryBank(
                 slpd_memory_size, self.config.train.bank_momentum_eta, self.logger
-            ).to(self.device)
+            )
             self.td_bank = TDMemoryBank(
                 td_memory_size, self.config.train.bank_momentum_eta, self.logger
-            ).to(self.device)
+            )
         else:
             self.feature_model.eval()
+
+        if self.config.save_load.load_models:
+            self.load_model()
+
+        self.feature_model.to(self.device)
+        if self.is_training:
+            optimizer_to(self.optimizer, self.device)
+            self.slpd_bank = self.slpd_bank.to(self.device)
+            self.td_bank = self.td_bank.to(self.device)
 
     def get_device(self):
         if self.config.general.device == 'cpu':
@@ -118,13 +138,13 @@ class SVAL(object):
             "Loading weights from {}".format(self.config.save_load.load_path)
         )
         ckpt = torch.load(
-            self.config.save_load.load_path, map_location=self.device
+            self.config.save_load.load_path, map_location='cpu'
         )
         self.feature_model.load_state_dict(ckpt['sval'])
 
         if not self.config.save_load.pretrained:
             self.optimizer.load_state_dict(ckpt['optimizer'])
-            self.start_epoch = ckpt['current_epoch']
+            self.start_epoch = ckpt['current_epoch'] + 1
             self.total_steps = ckpt['total_steps']
             self.slpd_bank.load_state_dict(ckpt['slpd_bank'])
             self.td_bank.load_state_dict(ckpt['td_bank'])
@@ -158,6 +178,8 @@ class SVAL(object):
             p_slp_features, p_patch_color_hist \
                 = self.feature_model(image, patch_image)
 
+        p_patch_color_hist = p_patch_color_hist + self.hist_stability_const
+
         hist_loss_global = p_global_color_hist * \
                             (p_global_color_hist.log() - global_color_hist)
         hist_loss_global = hist_loss_global.sum(dim=(1, 2)).mean()
@@ -166,9 +188,16 @@ class SVAL(object):
         hist_loss_local = hist_loss_local.sum(dim=(1,2)).mean()
         hist_loss = (hist_loss_global + hist_loss_local) / 2
 
-        if torch.any(torch.isnan(hist_loss.detach())) or \
-            torch.any(torch.isinf(hist_loss.detach())):
-            raise Exception("Hist loss is nan or inf: ", hist_loss)
+        try:
+            if torch.any(torch.isnan(hist_loss.detach())) or \
+                torch.any(torch.isinf(hist_loss.detach())):
+                raise Exception(
+                    "Hist loss is nan or inf: {}, hist loss local: {} "
+                    "hist loss global: {}"
+                    .format(hist_loss, hist_loss_local, hist_loss_global)
+                )
+        except:
+            import pdb;pdb.set_trace()
 
         logit_slpd_vector = torch.matmul(
             p_slp_features, self.slpd_bank.memory.T
