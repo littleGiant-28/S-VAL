@@ -58,12 +58,12 @@ class PolyvoreDataset(torch.utils.data.Dataset):
         )
 
         if self.config.data.apply_norm:
-            self._transform = transforms.ToTensor()
-        else:
             self._transform = transforms.Compose([
                 transforms.ToTensor(),
                 self.resnet_normalize
             ])
+        else:
+            self._transform = transforms.ToTensor()
 
     def load_split_index(self):
         file_path = self.config.save_load.train_split if self.phase == 'train' \
