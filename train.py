@@ -108,35 +108,36 @@ def train_loop(config, model, dataloaders, all_loggers):
         model.save_model(current_epoch, total_steps)
         model.memory_index_reset()
 
-        tepoch = tqdm(range(0, len(test_dataloader)), unit="batch")
-        tepoch.set_description("Test Epoch: {}".format(current_epoch))
-        dataloader_iter = iter(test_dataloader)
+        if config.train.do_val:
+            tepoch = tqdm(range(0, len(test_dataloader)), unit="batch")
+            tepoch.set_description("Test Epoch: {}".format(current_epoch))
+            dataloader_iter = iter(test_dataloader)
 
-        avg_stats = defaultdict(int)
+            avg_stats = defaultdict(int)
 
-        for current_step in tepoch:
-            batch = dataloader_iter.next()
-            stats = model.test_step(batch)
+            for current_step in tepoch:
+                batch = dataloader_iter.next()
+                stats = model.test_step(batch)
 
-            tepoch.set_postfix(**stats)
-            update_avg_states(avg_stats, stats, current_step)
+                tepoch.set_postfix(**stats)
+                update_avg_states(avg_stats, stats, current_step)
 
-            total_steps += 1
+                total_steps += 1
 
-        logger.info("Validation set wise average results: ")
-        logger.info(
-            "Epoch: {} Hist loss: {} Hist local loss: {} Hist global loss: {} "
-            "SLPD Loss: {} TD Loss: {} Total Loss: {}"
-            .format(current_epoch, avg_stats['hist_loss'], 
-            avg_stats['hist_loss_local'], avg_stats['hist_loss_global'], 
-            avg_stats['slpd_loss'], avg_stats['td_loss'],
-            avg_stats['total_loss'])
-        )
+            logger.info("Validation set wise average results: ")
+            logger.info(
+                "Epoch: {} Hist loss: {} Hist local loss: {} Hist global loss: {} "
+                "SLPD Loss: {} TD Loss: {} Total Loss: {}"
+                .format(current_epoch, avg_stats['hist_loss'], 
+                avg_stats['hist_loss_local'], avg_stats['hist_loss_global'], 
+                avg_stats['slpd_loss'], avg_stats['td_loss'],
+                avg_stats['total_loss'])
+            )
 
-        tfb_logger.log_scalars(
-            current_epoch, list(avg_stats.keys()), list(avg_stats.values()),
-            prefix="test/"
-        )
+            tfb_logger.log_scalars(
+                current_epoch, list(avg_stats.keys()), list(avg_stats.values()),
+                prefix="test/"
+            )
 
 def main():
     args = parse_args()
@@ -149,6 +150,7 @@ def main():
     logger.info("Constructing training dataloader")
     print("Constructing training dataloader")
     train_dataloader, test_dataloader, no_image = get_polyvore_dataloader(cfg, logger)
+    test_dataloader = None  #deleting test_dataloader
     dataloaders = (train_dataloader, test_dataloader)
     
     print("Constructing SVAL class instance")
