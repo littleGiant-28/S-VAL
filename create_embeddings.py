@@ -12,12 +12,26 @@ import cv2
 import torch
 import numpy as np
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 from torch.utils.tensorboard import SummaryWriter
-from datasets import PolyvoreDataset
+from sklearn import manifold
 
 from models import SVAL
 from configs import get_cfg_defaults
+from datasets import PolyvoreDataset
 from utils import create_logger
+
+IMAGE_HEIGHT = 64
+IMAGE_WIDTH = 64
+DPI = 100
+
+PERPLEXITY = [1, 5, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+LR = "auto"
+STEPS = 5000
+
+SEED = 22
+torch.manual_seed(SEED)
+np.random.seed(SEED)
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -47,14 +61,61 @@ def parse_args():
         "--phase", dest="phase", type=str, default="train",
         help="Whether to use train or val images for viz"
     )
+    parser.add_argument(
+        "--tsne", action='store_true',
+        help="Provide this flag to do tsne manually"
+    )
 
     return parser.parse_args()
 
-def transform_image(image, new_size=(64, 64)):
+def transform_image(image, new_size=(IMAGE_WIDTH, IMAGE_HEIGHT)):
     image = np.transpose(image, (1, 2, 0))  #CHW->HWC
     image = cv2.resize(image, new_size)[:, :, ::-1] #BGR->RGB
 
     return torch.from_numpy(image.copy()).permute(2, 0, 1) #HWC->CHW
+
+def do_tsne(features, images, save_dir):
+    # scale_factor_x = images[0].shape[1]
+    # scale_factor_y = images[0].shape[0]
+    scale_factor = np.array(
+        [[64, 64]], dtype=np.float32
+    )
+    print("Scale factor: ", scale_factor)
+    features = torch.stack(features, dim=0).numpy()
+
+    for perplextiy in PERPLEXITY:
+        print("perplexity: ", perplextiy)
+        tsne = manifold.TSNE(
+            n_components=2,
+            init='random',
+            random_state=0,
+            perplexity=perplextiy,
+            learning_rate=LR,
+            n_iter=STEPS
+        )
+
+        print("Running tsne...")
+        Y = tsne.fit_transform(features)
+
+        # Translating space to positive values
+        Y = Y + (-1*Y.min(axis=0)[np.newaxis, :]) + 1
+        # Scalling the space for better viz
+        Y = Y * scale_factor
+        # Inting it for coordinates
+        Y = Y.astype(np.int32)
+
+        max_w, max_h = Y.max(axis=0)
+        max_w += IMAGE_WIDTH
+        max_h += IMAGE_HEIGHT
+
+        print("Running rendering...")
+        fig = plt.figure(figsize=(max_w/DPI, max_h/DPI), dpi=DPI)
+
+        for coord, image in tqdm(zip(Y, images)):
+            fig.figimage(image.permute(1, 2, 0).numpy(), coord[0], coord[1])
+
+        save_path = os.path.join(save_dir, f"tsne_size-{Y.shape[0]}_perpx-{perplextiy}_lr-{LR}")
+        fig.savefig(save_path, dpi=DPI)
 
 def main():
     args = parse_args()
@@ -79,17 +140,19 @@ def main():
     no_images = len(dataset)
     print("Creating model")
     model = SVAL(cfg, logger, None, no_images)
-    print("Creating summary writer")
-    writer = SummaryWriter(args.save_dir)
 
     feature_mats = []
     image_mats = []
     label_list = []
 
     count = args.image_count if args.image_count > 0 else no_images
+    if args.phase == 'train':
+        sample_indices = np.random.randint(low=0, high=94000, size=count).tolist()
+    else:
+        sample_indices = list(range(count))
 
     with torch.no_grad():
-        for i in tqdm(range(count)):
+        for i in tqdm(sample_indices):
             sample = dataset[i]
             image = sample['image'].unsqueeze(0).to(model.device)
             image_name = sample['image_name']
@@ -105,15 +168,27 @@ def main():
         del features
         del image
 
-        writer.add_embedding(
-            torch.stack(feature_mats, dim=0),
-            metadata=label_list,
-            label_img=torch.stack(image_mats, dim=0),
-            global_step=0
-        )
+        import pdb;pdb.set_trace()
 
-        writer.close()
+        if args.tsne:
+            msg = "Doing tsne manually"
+            print(msg)
+            logger.info(msg)
+            do_tsne(feature_mats, image_mats, args.save_dir)
+        else:
+            print("Creating summary writer")
+            writer = SummaryWriter(args.save_dir)
+            msg = "Writing embeddings to tfb file"
+            print(msg)
+            logger.info(msg)
+            writer.add_embedding(
+                torch.stack(feature_mats, dim=0),
+                metadata=label_list,
+                label_img=torch.stack(image_mats, dim=0),
+                global_step=0
+            )
 
+            writer.close()
 
 if __name__ == '__main__':
     main()
