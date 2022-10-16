@@ -119,8 +119,8 @@ def do_tsne(features, images, save_dir):
 
 def main():
     args = parse_args()
-    # if not os.path.exists(args.save_dir):
-    #     os.mkdir(args.save_dir)
+    if not os.path.exists(args.save_dir):
+        os.mkdir(args.save_dir)
 
     cfg = get_cfg_defaults()
     cfg.merge_from_file(args.config)
@@ -168,7 +168,6 @@ def main():
         del features
         del image
 
-        import pdb;pdb.set_trace()
 
         if args.tsne:
             msg = "Doing tsne manually"
